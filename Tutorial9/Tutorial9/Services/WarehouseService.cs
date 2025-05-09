@@ -65,32 +65,52 @@ public class WarehouseService : IWarehouseService
     public async Task<int> AddProductToWarehouseByTrans(ProductWarehouseDTO dto)
     {
         if(dto.Amount <= 0) throw new InvalidOperationException("Amount must be greater than 0");
-        if(! await _productRepository.Exists(dto.IdProduct))
-            throw new InvalidOperationException("Product not found");
-        if(! await _warehouseRepository.Exists(dto.IdWarehouse))
-            throw new InvalidOperationException("Warehouse not found");
-        if(! await _orderRepository.Exists(dto.IdProduct, dto.Amount, dto.CreatedAt))
-            throw new InvalidOperationException("Order not found");
-        var orderId = await _orderRepository.GetOrderIdByProductAmount(dto.IdProduct, dto.Amount, dto.CreatedAt);
-        if(await _orderRepository.OrderFulfilled(orderId) || await _orderRepository.IsOrderCompleted(orderId))
-            throw new InvalidOperationException("Order is completed");
         using var conn = new SqlConnection(_connectionString);
+        await conn.OpenAsync();
         await using var transaction = await conn.BeginTransactionAsync() as SqlTransaction;
         try
         {
-            await conn.OpenAsync();
+            if(! await _productRepository.Exists(dto.IdProduct, transaction))
+                throw new InvalidOperationException("Product not found");
+            if(! await _warehouseRepository.Exists(dto.IdWarehouse, transaction))
+                throw new InvalidOperationException("Warehouse not found");
+            if(! await _orderRepository.Exists(dto.IdProduct, dto.Amount, dto.CreatedAt, transaction))
+                throw new InvalidOperationException("Order not found");
+            var orderId = await _orderRepository.GetOrderIdByProductAmount(dto.IdProduct, dto.Amount, dto.CreatedAt, transaction);
+            if (orderId == null)
+                throw new InvalidOperationException("Order not found or already fulfilled");
+            if(await _orderRepository.OrderFulfilled(orderId.Value, transaction))
+                throw new InvalidOperationException("Order is fulfilled");
+            if(await _orderRepository.IsOrderCompleted(orderId.Value, transaction))
+                throw new InvalidOperationException("Order is completed");
+            
             DateTime currentDate = DateTime.Now;
-            decimal price = await _productRepository.GetPrice(dto.IdProduct) * dto.Amount;
-            await _orderRepository.UpdateOrderFulfillment(orderId, currentDate, transaction);
-            int id = await _productWarehouseRepository.InsertProductWarehouse(transaction, dto.IdWarehouse,
-                dto.IdProduct, orderId, dto.Amount, price, currentDate);
+            var productPrice = await _productRepository.GetPrice(dto.IdProduct, transaction);
+            if(productPrice == null)
+                throw new InvalidOperationException("Price not found");
+            var price = productPrice.Value * dto.Amount;
+            await _orderRepository.UpdateOrderFulfillment(orderId.Value, currentDate, transaction);
+            var id = await _productWarehouseRepository.InsertProductWarehouse(transaction, dto.IdWarehouse,
+                dto.IdProduct, orderId.Value, dto.Amount, price, currentDate);
+            if(id == 0) 
+                throw new InvalidOperationException("Product not added");
             await transaction.CommitAsync();
             return id;
+        }
+        catch (InvalidOperationException)
+        {
+            await transaction.RollbackAsync();
+            throw;
+        }
+        catch (SqlException ex)
+        {
+            await transaction.RollbackAsync();
+            throw new Exception($"Database Error: {ex.Message}", ex);
         }
         catch (Exception ex)
         {
             await transaction.RollbackAsync();
-            throw new Exception($"Database Error: {ex.Message}");
+            throw new Exception($"Unexpected Error: {ex.Message}", ex);
         }
         
     }

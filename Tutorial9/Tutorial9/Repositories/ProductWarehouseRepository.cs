@@ -19,8 +19,8 @@ public class ProductWarehouseRepository : IProductWarehouseRepository
             cmd.Parameters.AddWithValue("@amount", amount);
             cmd.Parameters.AddWithValue("@price", price);
             cmd.Parameters.AddWithValue("@createdAt", createdAt);
-            var insertedId = (int)await cmd.ExecuteScalarAsync();
-            return insertedId;
+            var insertedId = await cmd.ExecuteScalarAsync();
+            return insertedId != null ? (int)insertedId : 0;
         }
     }
 }

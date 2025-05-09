@@ -4,36 +4,25 @@ namespace Tutorial9.Repositories;
 
 public class ProductRepository : IProductRepository
 {
-    private readonly string _connectionString;
-
-    public ProductRepository(IConfiguration configuration)
-    {
-        _connectionString = configuration["DefaultConnection"];
-    }
-
-    public async Task<bool> Exists(int id)
+    public async Task<bool> Exists(int id, SqlTransaction transaction)
     {
         string query = "select count(*) from Product where IdProduct = @id";
-        using(var conn = new SqlConnection(_connectionString))
-        using (var cmd = new SqlCommand(query, conn))
+        using (var cmd = new SqlCommand(query, transaction.Connection, transaction))
         {
-            await conn.OpenAsync();
             cmd.Parameters.AddWithValue("@id", id);
-            var result = (int) await cmd.ExecuteScalarAsync();
-            return result > 0;
+            var result = await cmd.ExecuteScalarAsync();
+            return result != null && (int)result > 0;
         }
     }
 
-    public async Task<decimal> GetPrice(int id)
+    public async Task<decimal?> GetPrice(int id, SqlTransaction transaction)
     {
         string query = "select Price from Product where IdProduct = @id";
-        using(var conn = new SqlConnection(_connectionString))
-        using (var cmd = new SqlCommand(query, conn))
+        using (var cmd = new SqlCommand(query, transaction.Connection, transaction))
         {
-            await conn.OpenAsync();
             cmd.Parameters.AddWithValue("@id", id);
-            var result = (decimal) await cmd.ExecuteScalarAsync();
-            return result;
+            var result = await cmd.ExecuteScalarAsync();
+            return result != null ? (decimal?)result : null;
         }
     }
 }
