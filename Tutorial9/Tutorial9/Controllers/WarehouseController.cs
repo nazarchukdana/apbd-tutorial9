@@ -22,7 +22,7 @@ public class WarehouseController : ControllerBase
         {
             
             var id = await _warehouseService.AddProductToWarehouseByProc(dto);
-            return Ok(id);
+            return CreatedAtAction(nameof(AddProductToWarehouseByProcedure), new {id}, id);
         }
         catch (InvalidOperationException ex)
         {
@@ -40,7 +40,7 @@ public class WarehouseController : ControllerBase
         {
             
             var id = await _warehouseService.AddProductToWarehouseByTrans(dto);
-            return Ok(id);
+            return CreatedAtAction(nameof(AddProductToWarehouseByTransaction), new {id}, id);
         }
         catch (InvalidOperationException ex)
         {
